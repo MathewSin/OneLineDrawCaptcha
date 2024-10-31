@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CAPTCHA - One Line Draw</title>
+    <style>
+        body {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+            font-family: Arial, sans-serif;
+        }
+        #canvas-container {
+            position: relative;
+            text-align: center;
+        }
+        canvas {
+            background-color: white;
+            border: 2px solid black;
+        }
+        #instructions {
+            font-size: 18px;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+
+<div id="canvas-container">
+    <div id="instructions">Draw the pattern by dragging from dot to dot</div>
+    <canvas id="captchaCanvas" width="400" height="300"></canvas>
+</div>
+
+<script>
+    const canvas = document.getElementById('captchaCanvas');
+    const ctx = canvas.getContext('2d');
+    const dotsToFollow = [];
+    let currentDot = 0;
+    let isDrawing = false;
+    let validAttempt = true;
+    let captchaPassed = false;
+
+    function randomPosition(min, max) {
+        return Math.floor(Math.random() * (max - min + 1)) + min;
+    }
+
+    function distance(point1, point2) {
+        return Math.sqrt((point1[0] - point2[0]) ** 2 + (point1[1] - point2[1]) ** 2);
+    }
+
+    function initDots() {
+        const colors = ["green", "yellow", "yellow", "red"];
+        for (let i = 0; i < 4; i++) {
+            let x, y;
+            do {
+                x = randomPosition(20, 380);
+                y = randomPosition(20, 280);
+            } while (dotsToFollow.some(dot => distance(dot, [x, y]) < 20));
+
+            dotsToFollow.push([x, y]);
+            ctx.fillStyle = colors[i];
+            ctx.beginPath();
+            ctx.arc(x, y, 6, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.font = "12px Arial";
+            ctx.fillStyle = "black";
+            ctx.fillText(i + 1, x - 5, y - 10);
+        }
+    }
+
+    function startLine(event) {
+        const rect = canvas.getBoundingClientRect();
+        const x = event.clientX - rect.left;
+        const y = event.clientY - rect.top;
+        const targetDot = dotsToFollow[currentDot];
+
+        // Start the line only if clicking on the correct dot
+        if (Math.abs(x - targetDot[0]) < 6 && Math.abs(y - targetDot[1]) < 6) {
+            isDrawing = true;
+            ctx.beginPath();
+            ctx.moveTo(targetDot[0], targetDot[1]);
+        }
+    }
+
+    function drawLine(event) {
+        if (!isDrawing || captchaPassed || !validAttempt) return;
+
+        const rect = canvas.getBoundingClientRect();
+        const x = event.clientX - rect.left;
+        const y = event.clientY - rect.top;
+        ctx.lineTo(x, y);
+        ctx.stroke();
+    }
+
+    function endLine(event) {
+        if (!isDrawing) return;
+
+        const rect = canvas.getBoundingClientRect();
+        const x = event.clientX - rect.left;
+        const y = event.clientY - rect.top;
+        const targetDot = dotsToFollow[currentDot];
+
+        // Check if the end of the line is close to the target dot
+        if (Math.abs(x - targetDot[0]) < 6 && Math.abs(y - targetDot[1]) < 6) {
+            // Finalize the line to this dot
+            ctx.lineTo(targetDot[0], targetDot[1]);
+            ctx.stroke();
+            currentDot += 1;
+
+            if (currentDot === dotsToFollow.length) {
+                captchaPassed = true;
+                alert("CAPTCHA passed!");
+            }
+        } else {
+            alert("CAPTCHA failed! Incorrect path.");
+            validAttempt = false;
+            location.reload();
+        }
+
+        isDrawing = false; // Reset drawing state
+    }
+
+    // Attach event listeners to handle mouse interactions
+    canvas.addEventListener('mousedown', startLine);
+    canvas.addEventListener('mousemove', drawLine);
+    canvas.addEventListener('mouseup', endLine);
+
+    initDots();
+</script>
+
+</body>
+</html>
