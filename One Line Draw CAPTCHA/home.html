@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CAPTCHA - Draw the Pattern</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #f0f8ff;
+            font-family: 'Arial', sans-serif;
+        }
+        canvas {
+            border: 2px solid #333;
+            background: linear-gradient(135deg, #ffffff, #d9e7ff);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+        }
+        #message {
+            font-size: 16px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #333;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div>
+        <div id="message">Draw the pattern</div>
+        <canvas id="captchaCanvas" width="400" height="300"></canvas>
+    </div>
+
+    <script>
+        let currentDot = 0;
+        let startTime = null;
+        let validAttempt = true;
+        let lastMouseMoveTime = null;
+        let dotsToFollow = [];
+        let isMouseDown = false;
+        const canvas = document.getElementById('captchaCanvas');
+        const ctx = canvas.getContext('2d');
+
+        function startCaptcha() {
+            startTime = Date.now();
+            lastMouseMoveTime = Date.now();
+            validAttempt = true;
+            isMouseDown = true;
+            setTimeout(forceExit, 15000); // Force exit after 15 seconds
+            setTimeout(checkMouseMovement, 5000); // Check mouse movement after 5 seconds
+        }
+
+        function forceExit() {
+            if (validAttempt) {
+                console.log("CAPTCHA failed! Time exceeded.");
+                validAttempt = false;
+                alert("CAPTCHA failed! Time exceeded.");
+                resetCaptcha();
+            }
+        }
+
+        function onPaint(event) {
+            if (!isMouseDown) return; // Only draw when mouse is pressed
+            
+            lastMouseMoveTime = Date.now();
+
+            if (validAttempt) {
+                const rect = canvas.getBoundingClientRect();
+                const x = event.clientX - rect.left;
+                const y = event.clientY - rect.top;
+                
+                ctx.beginPath();
+                ctx.arc(x, y, 6, 0, 2 * Math.PI);
+                ctx.fillStyle = "#333";
+                ctx.fill();
+
+                const targetDot = dotsToFollow[currentDot];
+                if (Math.abs(x - targetDot.x) < 6 && Math.abs(y - targetDot.y) < 6) {
+                    ctx.fillStyle = "#333";
+                    ctx.fillText(currentDot + 1, targetDot.x, targetDot.y);
+                    currentDot++;
+                    if (currentDot === dotsToFollow.length) {
+                        console.log("CAPTCHA passed!");
+                        alert("CAPTCHA passed!");
+                        window.location.href = "https://mathewsin.github.io/CaptchaTester/"; // Replace with your desired URL
+                    }
+                }
+            } else {
+                console.log("CAPTCHA failed! Invalid attempt.");
+                alert("CAPTCHA failed! Invalid attempt.");
+                resetCaptcha();
+            }
+        }
+
+        function onRelease() {
+            isMouseDown = false;
+            if (validAttempt && currentDot !== dotsToFollow.length) {
+                console.log("CAPTCHA failed! Released mouse prematurely.");
+                alert("CAPTCHA failed! Released mouse prematurely.");
+                validAttempt = false;
+                resetCaptcha();
+            }
+        }
+
+        function distance(point1, point2) {
+            return Math.sqrt(Math.pow(point1.x - point2.x, 2) + Math.pow(point1.y - point2.y, 2));
+        }
+
+        function checkMouseMovement() {
+            const currentTime = Date.now();
+            if (currentTime - lastMouseMoveTime >= 5000) {
+                console.log("CAPTCHA failed! Mouse idle for 5 seconds.");
+                alert("CAPTCHA failed! Mouse idle for 5 seconds.");
+                validAttempt = false;
+                resetCaptcha();
+            } else if (validAttempt) {
+                setTimeout(checkMouseMovement, 5000); // Check again after 5 seconds
+            }
+        }
+
+        function resetCaptcha() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear the canvas
+            dotsToFollow = []; // Reset the dots array
+            currentDot = 0; // Reset current dot index
+            generateDots(); // Regenerate dots
+        }
+
+        // Generate dots
+        function generateDots() {
+            for (let i = 0; i < 4; i++) {
+                let x = Math.random() * (380 - 20) + 20;
+                let y = Math.random() * (280 - 20) + 20;
+                let dotColor = i === 0 ? "green" : (i === 3 ? "red" : "yellow");
+
+                if (i > 0) {
+                    let validPosition = false;
+                    while (!validPosition) {
+                        validPosition = true;
+                        for (let dot of dotsToFollow) {
+                            if (distance(dot, { x, y }) < 20) {
+                                validPosition = false;
+                                x = Math.random() * (380 - 20) + 20;
+                                y = Math.random() * (280 - 20) + 20;
+                                break;
+                            }
+                        }
+                    }
+                }
+                dotsToFollow.push({ x, y, color: dotColor });
+                ctx.beginPath();
+                ctx.arc(x, y, 8, 0, 2 * Math.PI);
+                ctx.fillStyle = dotColor;
+                ctx.shadowColor = "rgba(0, 0, 0, 0.5)";
+                ctx.shadowBlur = 4;
+                ctx.fill();
+                ctx.shadowBlur = 0;
+                ctx.fillStyle = "#000";
+                ctx.font = "bold 16px Arial";
+                ctx.fillText(i + 1, x - 5, y + 5);
+            }
+        }
+
+        canvas.addEventListener('mousedown', startCaptcha);
+        canvas.addEventListener('mousemove', onPaint);
+        canvas.addEventListener('mouseup', onRelease);
+
+        generateDots();
+    </script>
+</body>
+</html>
