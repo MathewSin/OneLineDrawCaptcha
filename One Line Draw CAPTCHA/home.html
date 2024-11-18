@@ -45,53 +45,49 @@
         const ctx = canvas.getContext('2d');
 
         function startCaptcha() {
+            if (!validAttempt) return; // Prevent re-triggering if already invalid
             startTime = Date.now();
             lastMouseMoveTime = Date.now();
             validAttempt = true;
             isMouseDown = true;
             setTimeout(forceExit, 15000); // Force exit after 15 seconds
-            setTimeout(checkMouseMovement, 5000); // Check mouse movement after 5 seconds
+            checkMouseMovement(); // Start checking for mouse idle after 5 seconds
         }
 
         function forceExit() {
-            if (validAttempt) {
+            if (!validAttempt) return; // Skip if already failed
+            if (Date.now() - startTime >= 15000) {
                 console.log("CAPTCHA failed! Time exceeded.");
-                validAttempt = false;
                 alert("CAPTCHA failed! Time exceeded.");
+                validAttempt = false;
                 resetCaptcha();
             }
         }
 
         function onPaint(event) {
-            if (!isMouseDown) return; // Only draw when mouse is pressed
+            if (!isMouseDown || !validAttempt) return; // Only draw when mouse is pressed and attempt is valid
             
             lastMouseMoveTime = Date.now();
 
-            if (validAttempt) {
-                const rect = canvas.getBoundingClientRect();
-                const x = event.clientX - rect.left;
-                const y = event.clientY - rect.top;
-                
-                ctx.beginPath();
-                ctx.arc(x, y, 6, 0, 2 * Math.PI);
-                ctx.fillStyle = "#333";
-                ctx.fill();
+            const rect = canvas.getBoundingClientRect();
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
+            
+            ctx.beginPath();
+            ctx.arc(x, y, 6, 0, 2 * Math.PI);
+            ctx.fillStyle = "#333";
+            ctx.fill();
 
-                const targetDot = dotsToFollow[currentDot];
-                if (Math.abs(x - targetDot.x) < 6 && Math.abs(y - targetDot.y) < 6) {
-                    ctx.fillStyle = "#333";
-                    ctx.fillText(currentDot + 1, targetDot.x, targetDot.y);
-                    currentDot++;
-                    if (currentDot === dotsToFollow.length) {
-                        console.log("CAPTCHA passed!");
-                        alert("CAPTCHA passed!");
-                        window.location.href = "https://mathewsin.github.io/CaptchaTester/"; // Replace with your desired URL
-                    }
+            const targetDot = dotsToFollow[currentDot];
+            if (Math.abs(x - targetDot.x) < 6 && Math.abs(y - targetDot.y) < 6) {
+                ctx.fillStyle = "#333";
+                ctx.fillText(currentDot + 1, targetDot.x, targetDot.y);
+                currentDot++;
+                if (currentDot === dotsToFollow.length) {
+                    console.log("CAPTCHA passed!");
+                    alert("CAPTCHA passed!");
+                    window.location.href = "https://mathewsin.github.io/CaptchaTester/"; // Replace with your desired URL
                 }
-            } else {
-                console.log("CAPTCHA failed! Invalid attempt.");
-                alert("CAPTCHA failed! Invalid attempt.");
-                resetCaptcha();
             }
         }
 
@@ -110,14 +106,15 @@
         }
 
         function checkMouseMovement() {
+            if (!validAttempt) return; // Skip further checks if CAPTCHA has failed
             const currentTime = Date.now();
             if (currentTime - lastMouseMoveTime >= 5000) {
                 console.log("CAPTCHA failed! Mouse idle for 5 seconds.");
                 alert("CAPTCHA failed! Mouse idle for 5 seconds.");
                 validAttempt = false;
                 resetCaptcha();
-            } else if (validAttempt) {
-                setTimeout(checkMouseMovement, 5000); // Check again after 5 seconds
+            } else {
+                setTimeout(checkMouseMovement, 5000); // Check again after 5 seconds if still valid
             }
         }
 
@@ -126,6 +123,7 @@
             dotsToFollow = []; // Reset the dots array
             currentDot = 0; // Reset current dot index
             generateDots(); // Regenerate dots
+            validAttempt = true; // Reset validAttempt for new start
         }
 
         // Generate dots
