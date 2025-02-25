@@ -6,6 +6,7 @@
     <title>CAPTCHA - Draw the Pattern</title>
     <link rel="stylesheet" href="style.css">
     <style>
+        /* Basic styling for the modal */
         #timeoutModal {
             display: none;
             position: fixed;
@@ -33,53 +34,75 @@
 
     <script>
         let currentDot = 0;
+        let startTime = null;
         let validAttempt = true;
-        let isMouseDown = false;
-        let failedAttempts = 0;
-        let timeoutActive = false;
-        let lockEndTime = null;
+        let lastMouseMoveTime = null;
         let dotsToFollow = [];
+        let isMouseDown = false;
+        let failedAttempts = 0; // Track failed attempts
+        let timeoutActive = false; // Flag to check if timeout is active
         const canvas = document.getElementById('captchaCanvas');
         const ctx = canvas.getContext('2d');
         const timeoutModal = document.getElementById('timeoutModal');
         const timeoutMessage = document.getElementById('timeoutMessage');
-        let countdownTimer = null;
-
-        function saveState() {
-            localStorage.setItem("failedAttempts", failedAttempts);
-            localStorage.setItem("timeoutActive", timeoutActive);
-            localStorage.setItem("lockEndTime", lockEndTime);
-        }
-
-        function loadState() {
-            failedAttempts = parseInt(localStorage.getItem("failedAttempts")) || 0;
-            timeoutActive = localStorage.getItem("timeoutActive") === "true";
-            lockEndTime = parseInt(localStorage.getItem("lockEndTime")) || null;
-            
-            if (timeoutActive) {
-                let timeRemaining = (lockEndTime - Date.now()) / 1000;
-                if (timeRemaining > 0) {
-                    startTimeoutCountdown(Math.ceil(timeRemaining));
-                } else {
-                    timeoutActive = false;
-                    failedAttempts = 0;
-                    saveState();
-                }
-            }
-        }
+        let countdownTimer = null; // Store the countdown interval
+        let idleCheckTimer = null; // Store the idle check interval
+        let forceExitTimer = null; // Store the force exit timer
 
         function startCaptcha() {
             if (timeoutActive) {
-                alert("You have reached the maximum number of failed attempts. Please wait before retrying.");
-                return;
+                alert("You have reached the maximum number of failed attempts. Please wait 30 seconds before retrying.");
+                return; // Prevent starting the CAPTCHA if timeout is active
             }
+            if (!validAttempt) return; // Prevent re-triggering if already invalid
+            startTime = Date.now();
+            lastMouseMoveTime = Date.now();
             validAttempt = true;
             isMouseDown = true;
+
+            // Set timers and start checks
+            forceExitTimer = setTimeout(forceExit, 15000); // Force exit after 15 seconds
+            idleCheckTimer = setTimeout(checkMouseMovement, 5000); // Start checking for mouse idle after 5 seconds
+        }
+
+        function preventRefresh(event) {
+            if (timeoutActive) {
+                event.preventDefault();
+                event.returnValue = "You cannot refresh the page during timeout.";
+                return "You cannot refresh the page during timeout.";
+            }
+        }
+
+        window.addEventListener("beforeunload", preventRefresh);
+        document.addEventListener("keydown", function(event) {
+            if (timeoutActive && (event.key === "F5" || (event.ctrlKey && event.key === "r"))) {
+                event.preventDefault();
+                alert("You cannot refresh the page during timeout.");
+            }
+        });
+
+
+
+        function forceExit() {
+            if (!validAttempt) return; // Skip if already failed
+            if (Date.now() - startTime >= 15000) {
+                console.log("CAPTCHA failed! Time exceeded.");
+                alert("CAPTCHA failed! Time exceeded.");
+                validAttempt = false;
+                failedAttempts++;
+                if (failedAttempts >= 3) {
+                    timeoutActive = true; // Activate timeout after 3 failed attempts
+                    startTimeoutCountdown(30); // Start the 30-second timeout countdown
+                }
+                resetCaptcha();
+            }
         }
 
         function onPaint(event) {
-            if (!isMouseDown || !validAttempt) return;
+            if (!isMouseDown || !validAttempt) return; // Only draw when mouse is pressed and attempt is valid
             
+            lastMouseMoveTime = Date.now();
+
             const rect = canvas.getBoundingClientRect();
             const x = event.clientX - rect.left;
             const y = event.clientY - rect.top;
@@ -88,41 +111,93 @@
             ctx.arc(x, y, 6, 0, 2 * Math.PI);
             ctx.fillStyle = "#333";
             ctx.fill();
+
+            const targetDot = dotsToFollow[currentDot];
+            if (Math.abs(x - targetDot.x) < 6 && Math.abs(y - targetDot.y) < 6) {
+                ctx.fillStyle = "#333";
+                ctx.fillText(currentDot + 1, targetDot.x, targetDot.y);
+                currentDot++;
+                if (currentDot === dotsToFollow.length) {
+                    console.log("CAPTCHA passed!");
+                    alert("CAPTCHA passed!");
+                    window.location.href = "https://mathewsin.github.io/CaptchaTester/"; // Replace with your desired URL
+                }
+            }
         }
 
         function onRelease() {
             isMouseDown = false;
-            console.log("CAPTCHA failed! Released mouse prematurely.");
-            alert("CAPTCHA failed! Released mouse prematurely.");
-            validAttempt = false;
-            failedAttempts++;
-            if (failedAttempts >= 3) {
-                timeoutActive = true;
-                startTimeoutCountdown(30);
+            if (validAttempt && currentDot !== dotsToFollow.length) {
+                console.log("CAPTCHA failed! Released mouse prematurely.");
+                alert("CAPTCHA failed! Released mouse prematurely.");
+                validAttempt = false;
+                failedAttempts++;
+                if (failedAttempts >= 3) {
+                    timeoutActive = true; // Activate timeout after 3 failed attempts
+                    startTimeoutCountdown(30); // Start the 30-second timeout countdown
+                }
+                resetCaptcha();
             }
-            saveState();
-            resetCaptcha();
         }
 
+        function distance(point1, point2) {
+            return Math.sqrt(Math.pow(point1.x - point2.x, 2) + Math.pow(point1.y - point2.y, 2));
+        }
+
+        function checkMouseMovement() {
+            if (!validAttempt) return; // Skip further checks if CAPTCHA has failed
+            const currentTime = Date.now();
+            if (currentTime - lastMouseMoveTime >= 5000) {
+                console.log("CAPTCHA failed! Mouse idle for 5 seconds.");
+                alert("CAPTCHA failed! Mouse idle for 5 seconds.");
+                validAttempt = false;
+                failedAttempts++;
+                if (failedAttempts >= 3) {
+                    timeoutActive = true; // Activate timeout after 3 failed attempts
+                    startTimeoutCountdown(30); // Start the 30-second timeout countdown
+                }
+                resetCaptcha();
+            } else {
+                idleCheckTimer = setTimeout(checkMouseMovement, 5000); // Check again after 5 seconds if still valid
+            }
+        }
+
+        function resetCaptcha() {
+            // Clear all active timers
+            clearTimeout(forceExitTimer);
+            clearTimeout(idleCheckTimer);
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear the canvas
+            dotsToFollow = []; // Reset the dots array
+            currentDot = 0; // Reset current dot index
+            validAttempt = true; // Reset validAttempt for new start
+
+            // Reset timer-related variables
+            startTime = Date.now();  // Reset start time
+            lastMouseMoveTime = Date.now(); // Reset last mouse move time
+
+            generateDots(); // Regenerate dots
+        }
+
+        // Start the timeout countdown and update the modal
         function startTimeoutCountdown(seconds) {
             let countdown = seconds;
             timeoutModal.style.display = "block";
             updateTimeoutMessage(countdown);
-            
-            lockEndTime = Date.now() + seconds * 1000;
-            saveState();
-            
+
+            clearTimeout(forceExitTimer); // Clear the previous timers
+            clearTimeout(idleCheckTimer);
+
             countdownTimer = setInterval(() => {
                 countdown--;
                 updateTimeoutMessage(countdown);
                 if (countdown <= 0) {
                     clearInterval(countdownTimer);
                     timeoutActive = false;
-                    failedAttempts = 0;
-                    saveState();
+                    failedAttempts = 0; // Reset failed attempts
                     alert("You can now try again.");
                     timeoutModal.style.display = "none";
-                    startCaptcha();
+                    startCaptcha(); // Restart the CAPTCHA process after timeout
                 }
             }, 1000);
         }
@@ -131,24 +206,35 @@
             timeoutMessage.innerHTML = `You have failed 3 times. Please wait ${seconds} seconds before trying again.`;
         }
 
-        function resetCaptcha() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            dotsToFollow = [];
-            currentDot = 0;
-            validAttempt = true;
-            generateDots();
-        }
-
+        // Generate dots
         function generateDots() {
             for (let i = 0; i < 4; i++) {
                 let x = Math.random() * (380 - 20) + 20;
                 let y = Math.random() * (280 - 20) + 20;
                 let dotColor = i === 0 ? "green" : (i === 3 ? "red" : "yellow");
+
+                if (i > 0) {
+                    let validPosition = false;
+                    while (!validPosition) {
+                        validPosition = true;
+                        for (let dot of dotsToFollow) {
+                            if (distance(dot, { x, y }) < 20) {
+                                validPosition = false;
+                                x = Math.random() * (380 - 20) + 20;
+                                y = Math.random() * (280 - 20) + 20;
+                                break;
+                            }
+                        }
+                    }
+                }
                 dotsToFollow.push({ x, y, color: dotColor });
                 ctx.beginPath();
                 ctx.arc(x, y, 8, 0, 2 * Math.PI);
                 ctx.fillStyle = dotColor;
+                ctx.shadowColor = "rgba(0, 0, 0, 0.5)";
+                ctx.shadowBlur = 4;
                 ctx.fill();
+                ctx.shadowBlur = 0;
                 ctx.fillStyle = "#000";
                 ctx.font = "bold 16px Arial";
                 ctx.fillText(i + 1, x - 5, y + 5);
@@ -159,7 +245,6 @@
         canvas.addEventListener('mousemove', onPaint);
         canvas.addEventListener('mouseup', onRelease);
 
-        loadState();
         generateDots();
     </script>
 </body>
